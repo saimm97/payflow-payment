@@ -1,11 +1,19 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useTransactions } from "@/hooks/use-transactions";
 import { Card, CardHeader } from "./Card";
 import { TransactionList } from "./TransactionList";
+import type { Transaction } from "@/types";
 
 const MOCK_BALANCE = 12450.75;
+
+const PERIODS = [
+  { value: "7d", label: "Last 7 days", days: 7 },
+  { value: "30d", label: "Last 30 days", days: 30 },
+  { value: "all", label: "All time", days: null as number | null },
+] as const;
 
 function StatCard({
   label,
@@ -32,14 +40,92 @@ function StatCard({
   );
 }
 
+function filterByPeriod(transactions: Transaction[], days: number | null): Transaction[] {
+  if (days === null) return transactions;
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  return transactions.filter((t) => new Date(t.createdAt).getTime() >= cutoff);
+}
+
 export function DashboardOverview() {
   const { transactions, loading, error } = useTransactions();
-  const completed = transactions.filter((t) => t.status === "completed");
+  const [period, setPeriod] = useState<typeof PERIODS[number]["value"]>("30d");
+
+  const periodConfig = PERIODS.find((p) => p.value === period) ?? PERIODS[2];
+  const filtered = useMemo(
+    () => filterByPeriod(transactions, periodConfig.days),
+    [transactions, periodConfig.days]
+  );
+  const completed = filtered.filter((t) => t.status === "completed");
   const total = completed.reduce((sum, t) => sum + t.amount, 0);
-  const recent = transactions.slice(0, 5);
+  const recent = filtered.slice(0, 5);
+
+  const uniqueRecipients = useMemo(() => {
+    const seen = new Set<string>();
+    return transactions
+      .filter((t) => t.status === "completed")
+      .filter((t) => {
+        if (seen.has(t.recipient)) return false;
+        seen.add(t.recipient);
+        return true;
+      })
+      .slice(0, 3);
+  }, [transactions]);
+
+  const spendingByMonth = useMemo(() => {
+    const byMonth: Record<string, number> = {};
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      byMonth[key] = 0;
+    }
+    transactions
+      .filter((t) => t.status === "completed")
+      .forEach((t) => {
+        const d = new Date(t.createdAt);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        if (byMonth[key] !== undefined) byMonth[key] += t.amount;
+      });
+    return Object.entries(byMonth).sort(([a], [b]) => a.localeCompare(b));
+  }, [transactions]);
+  const maxSpending = Math.max(1, ...spendingByMonth.map(([, v]) => v));
 
   return (
     <div className="space-y-8 animate-fade-in">
+      <section className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex rounded-xl border border-surface-800 bg-surface-800/40 p-1">
+          {PERIODS.map((p) => (
+            <button
+              key={p.value}
+              type="button"
+              onClick={() => setPeriod(p.value)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                period === p.value
+                  ? "bg-brand-500/20 text-brand-400"
+                  : "text-surface-400 hover:text-white"
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </section>
+      {uniqueRecipients.length > 0 && (
+        <section>
+          <h2 className="text-sm font-medium text-surface-400 mb-2">Quick pay</h2>
+          <div className="flex flex-wrap gap-2">
+            {uniqueRecipients.map((t) => (
+              <Link
+                key={t.id}
+                href={`/pay?recipient=${encodeURIComponent(t.recipient)}`}
+                className="rounded-xl border border-surface-700 bg-surface-800/60 px-4 py-2 text-sm font-medium text-surface-300 hover:text-white hover:bg-surface-700/80 transition-colors"
+              >
+                Pay {t.recipient}
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
       <section>
         <h2 className="sr-only">Summary</h2>
         <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -56,7 +142,7 @@ export function DashboardOverview() {
           <StatCard
             label="Total sent"
             value={new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 }).format(total)}
-            subtext="Completed payments"
+            subtext={periodConfig.label}
             icon={
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
@@ -65,8 +151,8 @@ export function DashboardOverview() {
           />
           <StatCard
             label="Transactions"
-            value={String(transactions.length)}
-            subtext="All time"
+            value={String(filtered.length)}
+            subtext={periodConfig.label}
             icon={
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -85,7 +171,7 @@ export function DashboardOverview() {
           />
           <StatCard
             label="Pending"
-            value={String(transactions.filter((t) => t.status === "pending").length)}
+            value={String(filtered.filter((t) => t.status === "pending").length)}
             subtext="Awaiting completion"
             icon={
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -96,11 +182,40 @@ export function DashboardOverview() {
         </div>
       </section>
 
+      <Card className="p-6">
+          <h2 className="text-lg font-semibold text-white mb-1">Spending overview</h2>
+          <p className="text-sm text-surface-400 mb-6">Last 6 months (completed payments)</p>
+          <div
+            className="flex items-end gap-3 h-[140px] pb-6"
+            style={{ minHeight: 140 }}
+            role="img"
+            aria-label="Bar chart of spending by month"
+          >
+            {spendingByMonth.map(([label, value]) => {
+              const barHeight = maxSpending > 0 ? Math.max(8, (value / maxSpending) * 120) : 0;
+              return (
+                <div key={label} className="flex-1 flex flex-col items-center gap-2 min-w-0">
+                  <div className="w-full flex flex-col items-center justify-end h-[120px]">
+                    <div
+                      className="w-full max-w-[48px] rounded-t bg-brand-500 transition-all min-h-[8px]"
+                      style={{ height: `${barHeight}px` }}
+                      title={value > 0 ? `${new Date(label + "-01").toLocaleDateString("en-US", { month: "short", year: "numeric" })}: $${value.toFixed(2)}` : `${new Date(label + "-01").toLocaleDateString("en-US", { month: "short", year: "numeric" })}: $0`}
+                    />
+                  </div>
+                  <span className="text-xs text-surface-500 font-medium truncate w-full text-center">
+                    {new Date(label + "-01").toLocaleDateString("en-US", { month: "short" })}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+
       <div className="grid lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2 overflow-hidden">
           <CardHeader
             title="Recent transactions"
-          subtitle="Latest activity on your account"
+            subtitle="Latest activity on your account"
           action={
             <Link
               href="/transactions"

@@ -3,7 +3,7 @@
  * Kept in a single module for consistency and easy imports.
  */
 
-export type TransactionStatus = "pending" | "completed" | "failed";
+export type TransactionStatus = "pending" | "completed" | "failed" | "refunded";
 
 export interface Transaction {
   id: string;
@@ -12,6 +12,22 @@ export interface Transaction {
   recipient: string;
   description: string;
   status: TransactionStatus;
+  createdAt: string;
+  /** Set when payment was processed via Stripe */
+  stripePaymentIntentId?: string;
+  /** Set when transaction was refunded */
+  refundedAt?: string;
+  /** User-added note */
+  note?: string;
+}
+
+export interface PaymentLink {
+  id: string;
+  userId: string;
+  amount: number;
+  currency: string;
+  recipient: string;
+  description?: string;
   createdAt: string;
 }
 

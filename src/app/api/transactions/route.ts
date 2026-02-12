@@ -4,7 +4,9 @@ import { listTransactions } from "@/lib/payment-service";
 export async function GET() {
   try {
     const transactions = await listTransactions();
-    return NextResponse.json(transactions);
+    return NextResponse.json(transactions, {
+      headers: { "Cache-Control": "private, max-age=5" },
+    });
   } catch (error) {
     console.error("Failed to list transactions:", error);
     return NextResponse.json(

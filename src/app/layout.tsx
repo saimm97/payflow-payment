@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/Providers";
+import { ThemeProvider } from "@/components/ThemeProvider";
 
 const plusJakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -23,7 +24,9 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${plusJakarta.variable} ${jetbrainsMono.variable}`}>
       <body className="font-sans antialiased bg-surface-950 text-surface-50">
-        <Providers>{children}</Providers>
+        <Providers>
+        <ThemeProvider>{children}</ThemeProvider>
+      </Providers>
       </body>
     </html>
   );

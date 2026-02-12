@@ -13,10 +13,13 @@ A full-featured web payment application built with **Next.js 14**, **TypeScript*
 - **Settings** — Default currency and notification preferences.
 
 ### Payments & transactions
-- **Send payment** — Amount, currency, recipient (saved-recipient picker), description, card details (client-side only).
+- **Stripe integration** — When `STRIPE_SECRET_KEY` and `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` are set, card payments go through Stripe (Payment Intents). Otherwise demo mode (simulated success/failure) is used.
+- **Send payment** — Amount, currency, recipient (saved-recipient picker), description; Stripe Card Element or demo card fields.
+- **Payment links** — Create a shareable link (amount, recipient, description); anyone opening the link can sign in and pay. Copy link from the Payment links page.
 - **Request payment** — Create requests; list and mark as paid or cancel.
 - **Saved recipients** — Add and manage beneficiaries; use on payment form.
-- **Transactions** — Table with status filter, search, date range; click row for detail modal.
+- **Transactions** — Table with status (including **refunded**), search, date range; click row for detail modal with **Print receipt** and **Refund** (Stripe payments only).
+- **Export CSV** — Download filtered transactions as CSV from the Transactions page.
 - **Notifications** — Bell in sidebar; payment success/failure; mark read.
 
 ### Dashboard
@@ -36,6 +39,7 @@ A full-featured web payment application built with **Next.js 14**, **TypeScript*
 
 - **Framework:** Next.js 14 (App Router)
 - **Auth:** NextAuth.js (Credentials provider, JWT)
+- **Payments:** Stripe (Payment Intents, webhooks); optional, falls back to demo mode
 - **Language:** TypeScript
 - **Styling:** Tailwind CSS
 - **Validation:** Zod
@@ -58,11 +62,18 @@ src/
 │   │   ├── profile/page.tsx
 │   │   ├── settings/page.tsx
 │   │   ├── help/page.tsx
-│   │   └── requests/page.tsx
+│   │   ├── requests/page.tsx
+│   │   └── payment-links/page.tsx
+│   ├── pay/link/[id]/page.tsx   # Public payment link page (no auth required to view)
 │   ├── api/
 │   │   ├── auth/[...nextauth]/route.ts
 │   │   ├── auth/register/route.ts
 │   │   ├── payments/route.ts
+│   │   ├── payments/config/route.ts
+│   │   ├── payments/create-intent/route.ts
+│   │   ├── webhooks/stripe/route.ts
+│   │   ├── refunds/route.ts
+│   │   ├── payment-links/route.ts + [id]/route.ts
 │   │   ├── transactions/route.ts
 │   │   ├── recipients/route.ts  (GET, POST) + [id] (DELETE)
 │   │   ├── notifications/route.ts (GET, POST, PATCH) + [id] (PATCH)
@@ -81,6 +92,8 @@ src/
 │   ├── money-request-store.ts
 │   ├── settings-store.ts
 │   ├── signin-log-store.ts
+│   ├── payment-link-store.ts
+│   ├── stripe.ts
 │   ├── payment-service.ts
 │   └── validation.ts
 ├── types/
