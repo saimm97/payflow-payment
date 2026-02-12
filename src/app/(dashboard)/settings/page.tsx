@@ -3,12 +3,19 @@
 import { useState, useEffect } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/Card";
+import { setTheme } from "@/components/ThemeProvider";
 
 const CURRENCIES = ["USD", "EUR", "GBP"];
+const THEMES = [
+  { value: "system", label: "System" },
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+] as const;
 
 export default function SettingsPage() {
   const [defaultCurrency, setDefaultCurrency] = useState("USD");
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [theme, setThemeState] = useState<"dark" | "light" | "system">("system");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<"saved" | "error" | null>(null);
@@ -19,6 +26,7 @@ export default function SettingsPage() {
       .then((data) => {
         if (data.defaultCurrency) setDefaultCurrency(data.defaultCurrency);
         if (typeof data.notificationsEnabled === "boolean") setNotificationsEnabled(data.notificationsEnabled);
+        if (["dark", "light", "system"].includes(data.theme)) setThemeState(data.theme);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -34,9 +42,11 @@ export default function SettingsPage() {
         body: JSON.stringify({
           defaultCurrency,
           notificationsEnabled,
+          theme,
         }),
       });
       if (res.ok) {
+        setTheme(theme);
         setMessage("saved");
         setTimeout(() => setMessage(null), 3000);
       } else setMessage("error");
@@ -82,6 +92,18 @@ export default function SettingsPage() {
                 >
                   {CURRENCIES.map((c) => (
                     <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="block text-sm font-medium text-surface-300 mb-2">Theme</span>
+                <select
+                  value={theme}
+                  onChange={(e) => setThemeState(e.target.value as "dark" | "light" | "system")}
+                  className="input-base max-w-[140px]"
+                >
+                  {THEMES.map((t) => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
                   ))}
                 </select>
               </label>

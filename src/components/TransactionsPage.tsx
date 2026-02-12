@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useTransactions } from "@/hooks/use-transactions";
 import { Card } from "./Card";
 import { TransactionDetailModal } from "./TransactionDetailModal";
@@ -25,6 +25,7 @@ function StatusBadge({ status }: { status: TransactionStatus }) {
     completed: "bg-brand-500/15 text-brand-400 border-brand-500/30",
     pending: "bg-amber-500/15 text-amber-400 border-amber-500/30",
     failed: "bg-red-500/15 text-red-400 border-red-500/30",
+    refunded: "bg-surface-700 text-surface-400 border-surface-600",
   };
   return (
     <span
@@ -35,20 +36,45 @@ function StatusBadge({ status }: { status: TransactionStatus }) {
   );
 }
 
+const PAGE_SIZE = 10;
+
 const STATUS_OPTIONS: { value: "" | TransactionStatus; label: string }[] = [
   { value: "", label: "All statuses" },
   { value: "completed", label: "Completed" },
   { value: "pending", label: "Pending" },
   { value: "failed", label: "Failed" },
+  { value: "refunded", label: "Refunded" },
 ];
 
+function exportToCsv(transactions: Transaction[]) {
+  const headers = ["ID", "Recipient", "Description", "Amount", "Currency", "Status", "Date"];
+  const rows = transactions.map((t) => [
+    t.id,
+    t.recipient,
+    t.description || "",
+    t.amount,
+    t.currency,
+    t.status,
+    new Date(t.createdAt).toISOString(),
+  ]);
+  const csv = [headers.join(","), ...rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `transactions-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export function TransactionsPage() {
-  const { transactions, loading, error } = useTransactions();
+  const { transactions, loading, error, refetch } = useTransactions();
   const [statusFilter, setStatusFilter] = useState<"" | TransactionStatus>("");
   const [searchQuery, setSearchQuery] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
+  const [page, setPage] = useState(1);
 
   const filtered = useMemo(() => {
     let list = transactions;
@@ -72,6 +98,16 @@ export function TransactionsPage() {
     }
     return list;
   }, [transactions, statusFilter, searchQuery, dateFrom, dateTo]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated = useMemo(
+    () => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filtered, page]
+  );
+
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter, searchQuery, dateFrom, dateTo]);
 
   if (error) {
     return (
@@ -130,9 +166,42 @@ export function TransactionsPage() {
               />
             </div>
           </div>
-          <p className="text-sm text-surface-500">
-            {filtered.length} of {transactions.length} transactions
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <p className="text-sm text-surface-500">
+              {filtered.length} of {transactions.length} transactions
+              {totalPages > 1 && ` · Page ${page} of ${totalPages}`}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => exportToCsv(filtered)}
+                disabled={filtered.length === 0}
+                className="rounded-xl border border-surface-700 bg-surface-800 px-4 py-2 text-sm font-medium text-surface-300 hover:text-white hover:bg-surface-700 disabled:opacity-50 transition-colors"
+              >
+                Export CSV
+              </button>
+              {totalPages > 1 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page <= 1}
+                    className="rounded-xl border border-surface-700 bg-surface-800 px-3 py-2 text-sm font-medium text-surface-300 hover:text-white disabled:opacity-50 transition-colors"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={page >= totalPages}
+                    className="rounded-xl border border-surface-700 bg-surface-800 px-3 py-2 text-sm font-medium text-surface-300 hover:text-white disabled:opacity-50 transition-colors"
+                  >
+                    Next
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
         </div>
         <div className="overflow-x-auto">
           {loading ? (
@@ -159,7 +228,7 @@ export function TransactionsPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((tx) => (
+                {paginated.map((tx) => (
                   <tr
                     key={tx.id}
                     onClick={() => setSelectedTx(tx)}
@@ -185,7 +254,12 @@ export function TransactionsPage() {
           )}
         </div>
       </Card>
-      <TransactionDetailModal transaction={selectedTx} onClose={() => setSelectedTx(null)} />
+      <TransactionDetailModal
+        transaction={selectedTx}
+        onClose={() => setSelectedTx(null)}
+        onRefund={() => setSelectedTx(null)}
+        refetch={refetch}
+      />
     </>
   );
 }

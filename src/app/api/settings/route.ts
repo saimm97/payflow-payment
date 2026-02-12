@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { getSettings, updateSettings } from "@/lib/settings-store";
+import { getSettings, updateSettings, type Theme } from "@/lib/settings-store";
 
 export async function GET() {
   try {
@@ -17,6 +17,8 @@ export async function GET() {
   }
 }
 
+const THEMES: Theme[] = ["dark", "light", "system"];
+
 export async function PATCH(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -24,13 +26,16 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
     const body = await request.json();
-    const { defaultCurrency, notificationsEnabled } = body;
-    const patch: { defaultCurrency?: string; notificationsEnabled?: boolean } = {};
+    const { defaultCurrency, notificationsEnabled, theme } = body;
+    const patch: { defaultCurrency?: string; notificationsEnabled?: boolean; theme?: Theme } = {};
     if (typeof defaultCurrency === "string" && defaultCurrency.length === 3) {
       patch.defaultCurrency = defaultCurrency;
     }
     if (typeof notificationsEnabled === "boolean") {
       patch.notificationsEnabled = notificationsEnabled;
+    }
+    if (THEMES.includes(theme)) {
+      patch.theme = theme;
     }
     const next = updateSettings(session.user.id, patch);
     return NextResponse.json(next);

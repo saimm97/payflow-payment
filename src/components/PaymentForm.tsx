@@ -6,7 +6,13 @@ import type { ZodIssue } from "zod";
 import { usePayment } from "@/hooks/use-payment";
 import { useTransactions } from "@/hooks/use-transactions";
 import { Card } from "./Card";
+import { StripePaymentForm } from "./StripePaymentForm";
 import type { Recipient } from "@/types";
+
+interface PaymentConfig {
+  stripeEnabled: boolean;
+  publishableKey: string | null;
+}
 
 const CURRENCIES = [
   { value: "USD", label: "USD" },
@@ -40,7 +46,8 @@ function fieldErrorsFromZod(issues: ZodIssue[]): Record<string, string> {
   return out;
 }
 
-export function PaymentForm() {
+export function PaymentForm({ prefilled }: { prefilled?: { amount?: number; currency?: string; recipient?: string; description?: string } } = {}) {
+  const [paymentConfig, setPaymentConfig] = useState<PaymentConfig | null>(null);
   const [form, setForm] = useState(initialFormState);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [recipients, setRecipients] = useState<Recipient[]>([]);
@@ -48,11 +55,29 @@ export function PaymentForm() {
   const { refetch } = useTransactions();
 
   useEffect(() => {
+    fetch("/api/payments/config")
+      .then((res) => (res.ok ? res.json() : { stripeEnabled: false, publishableKey: null }))
+      .then((data) => setPaymentConfig({ stripeEnabled: Boolean(data.stripeEnabled), publishableKey: data.publishableKey ?? null }))
+      .catch(() => setPaymentConfig({ stripeEnabled: false, publishableKey: null }));
+  }, []);
+
+  useEffect(() => {
     fetch("/api/recipients")
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => setRecipients(Array.isArray(data) ? data : []))
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!prefilled) return;
+    setForm((prev) => ({
+      ...prev,
+      ...(prefilled.recipient != null && { recipient: prefilled.recipient }),
+      ...(prefilled.amount != null && { amount: prefilled.amount }),
+      ...(prefilled.currency != null && { currency: prefilled.currency }),
+      ...(prefilled.description != null && { description: prefilled.description }),
+    }));
+  }, [prefilled?.recipient, prefilled?.amount, prefilled?.currency, prefilled?.description]);
 
   const update = useCallback(
     (name: string, value: string | number) => {
@@ -104,6 +129,20 @@ export function PaymentForm() {
     },
     [form, submitPayment, refetch]
   );
+
+  if (paymentConfig?.stripeEnabled && paymentConfig.publishableKey) {
+    return (
+      <Card className="p-6 sm:p-8">
+        <p className="text-surface-400 text-sm mb-6">Pay securely with your card via Stripe.</p>
+        <StripePaymentForm
+          publishableKey={paymentConfig.publishableKey}
+          recipients={recipients}
+          prefilled={prefilled}
+          onSuccess={refetch}
+        />
+      </Card>
+    );
+  }
 
   return (
     <Card className="p-6 sm:p-8">

@@ -5,11 +5,13 @@ import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useSession } from "next-auth/react";
 import { NotificationCenter } from "./NotificationCenter";
+import { ThemeToggle } from "./ThemeToggle";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: DashboardIcon },
   { href: "/pay", label: "Send payment", icon: PayIcon },
   { href: "/requests", label: "Request payment", icon: RequestIcon },
+  { href: "/payment-links", label: "Payment links", icon: LinkIcon },
   { href: "/transactions", label: "Transactions", icon: TransactionsIcon },
   { href: "/recipients", label: "Recipients", icon: RecipientsIcon },
   { href: "/profile", label: "Profile", icon: ProfileIcon },
@@ -82,6 +84,14 @@ function HelpIcon({ className }: { className?: string }) {
   );
 }
 
+function LinkIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+    </svg>
+  );
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { data: session, status } = useSession();
@@ -92,13 +102,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         className="w-64 flex-shrink-0 border-r border-surface-800 bg-surface-900/95 backdrop-blur-sm shadow-sidebar flex flex-col"
         aria-label="Main navigation"
       >
-        <div className="p-6 border-b border-surface-800">
-          <Link href="/" className="flex items-center gap-3 group">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center font-mono font-bold text-surface-950 shadow-glow-brand group-hover:shadow-lg transition-shadow">
+        <div className="p-6 border-b border-surface-800 flex items-center justify-between gap-3">
+          <Link href="/" className="flex items-center gap-3 group min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center font-mono font-bold text-surface-950 shadow-glow-brand group-hover:shadow-lg transition-shadow flex-shrink-0">
               P
             </div>
-            <span className="text-xl font-semibold tracking-tight text-white">PayFlow</span>
+            <span className="text-xl font-semibold tracking-tight text-white truncate">PayFlow</span>
           </Link>
+          <ThemeToggle />
         </div>
         <nav className="flex-1 p-4 space-y-1">
           {navItems.map(({ href, label, icon: Icon }) => {
