@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #020617;
+  --foreground: #f8fafc;
+  --card: #1e293b;
+  --card-border: rgba(51, 65, 85, 0.6);
+  --border: #334155;
+  --accent: #14b8a6;
+  --accent-hover: #0d9488;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  min-height: 100vh;
+}
+
+@layer utilities {
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-brand-500/80 focus:ring-offset-2 focus:ring-offset-surface-950;
+  }
+  .input-base {
+    @apply w-full rounded-xl border px-4 py-3 text-white transition-colors focus-ring;
+    border-color: var(--border);
+    background-color: rgb(30 41 59 / 0.8);
+  }
+  .input-base::placeholder {
+    color: rgb(100 116 139);
+  }
+  .input-base:focus {
+    border-color: rgb(20 184 166 / 0.5);
+    background-color: rgb(30 41 59);
+  }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: rgb(15 23 42);
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(51 65 85);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(71 85 105);
+}
