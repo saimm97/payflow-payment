@@ -33,3 +33,10 @@ export function findUserByEmail(email: string): User | undefined {
 export function findUserById(id: string): User | undefined {
   return users.get(id);
 }
+
+export function updateUserPassword(userId: string, newPasswordHash: string): boolean {
+  const user = users.get(userId);
+  if (!user) return false;
+  user.passwordHash = newPasswordHash;
+  return true;
+}

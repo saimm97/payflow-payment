@@ -5,6 +5,7 @@ import { useTransactions } from "@/hooks/use-transactions";
 import { Card } from "./Card";
 import { TransactionDetailModal } from "./TransactionDetailModal";
 import type { Transaction, TransactionStatus } from "@/types";
+import { TRANSACTION_CATEGORIES } from "@/types";
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", {
@@ -46,12 +47,18 @@ const STATUS_OPTIONS: { value: "" | TransactionStatus; label: string }[] = [
   { value: "refunded", label: "Refunded" },
 ];
 
+const CATEGORY_OPTIONS = [
+  { value: "", label: "All categories" },
+  ...TRANSACTION_CATEGORIES.map((c) => ({ value: c, label: c })),
+];
+
 function exportToCsv(transactions: Transaction[]) {
-  const headers = ["ID", "Recipient", "Description", "Amount", "Currency", "Status", "Date"];
+  const headers = ["ID", "Recipient", "Description", "Category", "Amount", "Currency", "Status", "Date"];
   const rows = transactions.map((t) => [
     t.id,
     t.recipient,
     t.description || "",
+    t.category || "",
     t.amount,
     t.currency,
     t.status,
@@ -67,9 +74,50 @@ function exportToCsv(transactions: Transaction[]) {
   URL.revokeObjectURL(url);
 }
 
+function exportToPdf(transactions: Transaction[]) {
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) return;
+  const dateRange =
+    transactions.length > 0
+      ? `${new Date(transactions[transactions.length - 1].createdAt).toLocaleDateString("en-US")} – ${new Date(transactions[0].createdAt).toLocaleDateString("en-US")}`
+      : "—";
+  const rows = transactions
+    .map(
+      (t) =>
+        `<tr>
+          <td>${t.recipient}</td>
+          <td>${t.description || "—"}</td>
+          <td>${t.category || "—"}</td>
+          <td>${t.currency} ${t.amount.toFixed(2)}</td>
+          <td>${t.status}</td>
+          <td>${new Date(t.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</td>
+        </tr>`
+    )
+    .join("");
+  printWindow.document.write(`
+    <!DOCTYPE html><html><head><title>PayFlow Statement</title>
+    <style>body{font-family:system-ui;max-width:900px;margin:2rem auto;padding:1rem;color:#111;}
+    h1{font-size:1.5rem;} .meta{color:#666;font-size:0.875rem;margin-bottom:1.5rem;}
+    table{width:100%;border-collapse:collapse;} th,td{padding:0.5rem 0.75rem;text-align:left;border-bottom:1px solid #eee;}
+    th{font-size:0.75rem;text-transform:uppercase;color:#666;}</style></head><body>
+    <h1>PayFlow — Transaction statement</h1>
+    <p class="meta">Period: ${dateRange} · ${transactions.length} transaction(s)</p>
+    <table>
+      <thead><tr><th>Recipient</th><th>Description</th><th>Category</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <p style="margin-top:2rem;font-size:0.75rem;color:#666;">PayFlow. This is not a tax document. Generated ${new Date().toLocaleString("en-US")}.</p>
+    </body></html>
+  `);
+  printWindow.document.close();
+  printWindow.print();
+  printWindow.close();
+}
+
 export function TransactionsPage() {
   const { transactions, loading, error, refetch } = useTransactions();
   const [statusFilter, setStatusFilter] = useState<"" | TransactionStatus>("");
+  const [categoryFilter, setCategoryFilter] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -79,6 +127,7 @@ export function TransactionsPage() {
   const filtered = useMemo(() => {
     let list = transactions;
     if (statusFilter) list = list.filter((t) => t.status === statusFilter);
+    if (categoryFilter) list = list.filter((t) => (t.category || "") === categoryFilter);
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
       list = list.filter(
@@ -97,7 +146,7 @@ export function TransactionsPage() {
       list = list.filter((t) => new Date(t.createdAt).getTime() <= to.getTime());
     }
     return list;
-  }, [transactions, statusFilter, searchQuery, dateFrom, dateTo]);
+  }, [transactions, statusFilter, categoryFilter, searchQuery, dateFrom, dateTo]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = useMemo(
@@ -107,7 +156,7 @@ export function TransactionsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [statusFilter, searchQuery, dateFrom, dateTo]);
+  }, [statusFilter, categoryFilter, searchQuery, dateFrom, dateTo]);
 
   if (error) {
     return (
@@ -132,6 +181,20 @@ export function TransactionsPage() {
                 className="rounded-xl border border-surface-700 bg-surface-800 px-4 py-2 text-sm text-white focus-ring"
               >
                 {STATUS_OPTIONS.map((o) => (
+                  <option key={o.value || "all"} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-2">
+              <span className="text-sm text-surface-400">Category</span>
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="rounded-xl border border-surface-700 bg-surface-800 px-4 py-2 text-sm text-white focus-ring"
+              >
+                {CATEGORY_OPTIONS.map((o) => (
                   <option key={o.value || "all"} value={o.value}>
                     {o.label}
                   </option>
@@ -180,6 +243,14 @@ export function TransactionsPage() {
               >
                 Export CSV
               </button>
+              <button
+                type="button"
+                onClick={() => exportToPdf(filtered)}
+                disabled={filtered.length === 0}
+                className="rounded-xl border border-surface-700 bg-surface-800 px-4 py-2 text-sm font-medium text-surface-300 hover:text-white hover:bg-surface-700 disabled:opacity-50 transition-colors"
+              >
+                Print / PDF
+              </button>
               {totalPages > 1 && (
                 <>
                   <button
@@ -212,7 +283,7 @@ export function TransactionsPage() {
             </div>
           ) : filtered.length === 0 ? (
             <div className="p-12 text-center text-surface-400 text-sm">
-              {statusFilter || searchQuery || dateFrom || dateTo
+              {statusFilter || categoryFilter || searchQuery || dateFrom || dateTo
                 ? "No transactions match your filters."
                 : "No transactions yet."}
             </div>
@@ -222,6 +293,7 @@ export function TransactionsPage() {
                 <tr className="border-b border-surface-800">
                   <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-surface-400">Recipient</th>
                   <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-surface-400">Description</th>
+                  <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-surface-400">Category</th>
                   <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-surface-400">Amount</th>
                   <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-surface-400">Status</th>
                   <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-surface-400">Date</th>
@@ -237,6 +309,9 @@ export function TransactionsPage() {
                     <td className="px-6 py-4 font-medium text-white">{tx.recipient}</td>
                     <td className="px-6 py-4 text-surface-400 text-sm max-w-xs truncate">
                       {tx.description || "—"}
+                    </td>
+                    <td className="px-6 py-4 text-surface-500 text-sm">
+                      {tx.category || "—"}
                     </td>
                     <td className="px-6 py-4 font-mono font-semibold text-brand-400">
                       {formatAmount(tx.amount, tx.currency)}

@@ -8,6 +8,7 @@ import { useTransactions } from "@/hooks/use-transactions";
 import { Card } from "./Card";
 import { StripePaymentForm } from "./StripePaymentForm";
 import type { Recipient } from "@/types";
+import { TRANSACTION_CATEGORIES } from "@/types";
 
 interface PaymentConfig {
   stripeEnabled: boolean;
@@ -30,6 +31,7 @@ const initialFormState: Record<keyof PaymentFormValues, string | number> = {
   currency: "USD",
   recipient: "",
   description: "",
+  category: "",
   cardNumber: "",
   expiryMonth: "",
   expiryYear: "",
@@ -46,11 +48,38 @@ function fieldErrorsFromZod(issues: ZodIssue[]): Record<string, string> {
   return out;
 }
 
-export function PaymentForm({ prefilled }: { prefilled?: { amount?: number; currency?: string; recipient?: string; description?: string } } = {}) {
+function getTomorrowIso(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+export function PaymentForm({
+  prefilled,
+}: {
+  prefilled?: {
+    amount?: number;
+    currency?: string;
+    recipient?: string;
+    description?: string;
+    schedule?: boolean;
+  };
+} = {}) {
   const [paymentConfig, setPaymentConfig] = useState<PaymentConfig | null>(null);
   const [form, setForm] = useState(initialFormState);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [recipients, setRecipients] = useState<Recipient[]>([]);
+  const [scheduleForLater, setScheduleForLater] = useState(Boolean(prefilled?.schedule));
+  const [scheduledDate, setScheduledDate] = useState(() => getTomorrowIso());
+  const [scheduleSuccess, setScheduleSuccess] = useState(false);
+  const [scheduling, setScheduling] = useState(false);
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    amount: number;
+    currency: string;
+    recipient: string;
+    description?: string;
+    category?: string;
+  } | null>(null);
   const { submitPayment, loading, error: apiError, result, reset } = usePayment();
   const { refetch } = useTransactions();
 
@@ -77,7 +106,8 @@ export function PaymentForm({ prefilled }: { prefilled?: { amount?: number; curr
       ...(prefilled.currency != null && { currency: prefilled.currency }),
       ...(prefilled.description != null && { description: prefilled.description }),
     }));
-  }, [prefilled?.recipient, prefilled?.amount, prefilled?.currency, prefilled?.description]);
+    if (prefilled.schedule) setScheduleForLater(true);
+  }, [prefilled]);
 
   const update = useCallback(
     (name: string, value: string | number) => {
@@ -101,12 +131,66 @@ export function PaymentForm({ prefilled }: { prefilled?: { amount?: number; curr
     async (e: React.FormEvent) => {
       e.preventDefault();
       setFieldErrors({});
+      setScheduleSuccess(false);
+
+      const amount = typeof form.amount === "string" ? parseFloat(form.amount) : form.amount;
+      const currency = String(form.currency);
+      const recipient = String(form.recipient).trim();
+      const description = String(form.description).trim();
+      const category = String(form.category || "").trim() || undefined;
+
+      if (scheduleForLater) {
+        if (!recipient || recipient.length < 2) {
+          setFieldErrors({ recipient: "Recipient name is required" });
+          return;
+        }
+        if (!Number.isFinite(amount) || amount <= 0) {
+          setFieldErrors({ amount: "Enter a valid amount" });
+          return;
+        }
+        const date = new Date(scheduledDate);
+        date.setHours(0, 0, 0, 0);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (Number.isNaN(date.getTime()) || date.getTime() <= today.getTime()) {
+          setFieldErrors({ scheduledDate: "Pick a future date" });
+          return;
+        }
+        setScheduling(true);
+        try {
+          const res = await fetch("/api/scheduled", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              amount,
+              currency,
+              recipient,
+              description: description || undefined,
+              category,
+              scheduledFor: scheduledDate,
+            }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            setFieldErrors({ form: data.message || "Failed to schedule" });
+            return;
+          }
+          setForm((prev) => ({ ...prev, amount: "", description: "", category: "" }));
+          setScheduledDate(getTomorrowIso());
+          setScheduleSuccess(true);
+        } catch {
+          setFieldErrors({ form: "Failed to schedule payment" });
+        }
+        setScheduling(false);
+        return;
+      }
 
       const payload = {
-        amount: typeof form.amount === "string" ? parseFloat(form.amount) : form.amount,
-        currency: String(form.currency),
-        recipient: String(form.recipient).trim(),
-        description: String(form.description).trim(),
+        amount,
+        currency,
+        recipient,
+        description,
+        category,
         cardNumber: String(form.cardNumber).replace(/\s/g, ""),
         expiryMonth: String(form.expiryMonth),
         expiryYear: String(form.expiryYear),
@@ -120,15 +204,35 @@ export function PaymentForm({ prefilled }: { prefilled?: { amount?: number; curr
         return;
       }
 
-      const { amount, currency, recipient, description } = parsed.data;
-      const res = await submitPayment({ amount, currency, recipient, description });
-      if (res?.success) {
-        setForm(initialFormState);
-        refetch();
-      }
+      setPendingConfirm({
+        amount: parsed.data.amount,
+        currency: parsed.data.currency,
+        recipient: parsed.data.recipient,
+        description: parsed.data.description,
+        ...(parsed.data.category && { category: parsed.data.category }),
+      });
     },
-    [form, submitPayment, refetch]
+    [form, scheduleForLater, scheduledDate]
   );
+
+  const handleConfirmPayment = useCallback(async () => {
+    if (!pendingConfirm) return;
+    const { amount, currency, recipient, description, category } = pendingConfirm;
+    const res = await submitPayment({
+      amount,
+      currency,
+      recipient,
+      description,
+      ...(category && { category }),
+    });
+    setPendingConfirm(null);
+    if (res?.success) {
+      setForm(initialFormState);
+      refetch();
+    }
+  }, [pendingConfirm, submitPayment, refetch]);
+
+  const isSubmitting = loading || scheduling;
 
   if (paymentConfig?.stripeEnabled && paymentConfig.publishableKey) {
     return (
@@ -177,6 +281,21 @@ export function PaymentForm({ prefilled }: { prefilled?: { amount?: number; curr
         >
           Payment of {result.transaction.currency} {result.transaction.amount.toFixed(2)} to{" "}
           {result.transaction.recipient} was successful.
+        </div>
+      )}
+
+      {scheduleSuccess && (
+        <div
+          role="status"
+          className="rounded-lg border border-brand-500/30 bg-brand-500/10 px-4 py-3 text-brand-400 text-sm animate-fade-in"
+        >
+          Payment scheduled for {new Date(scheduledDate).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric", year: "numeric" })}. View it in Scheduled.
+        </div>
+      )}
+
+      {fieldErrors.form && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-400 text-sm" role="alert">
+          {fieldErrors.form}
         </div>
       )}
 
@@ -253,17 +372,68 @@ export function PaymentForm({ prefilled }: { prefilled?: { amount?: number; curr
         </label>
       </div>
 
-      <label className="block">
-        <span className="block text-sm font-medium text-surface-300 mb-1">Description (optional)</span>
-        <input
-          type="text"
-          placeholder="What's this for?"
-          value={String(form.description)}
-          onChange={(e) => update("description", e.target.value)}
-          className="input-base"
-        />
-      </label>
+      <div className="grid sm:grid-cols-2 gap-4">
+        <label className="block">
+          <span className="block text-sm font-medium text-surface-300 mb-1">Description (optional)</span>
+          <input
+            type="text"
+            placeholder="What's this for?"
+            value={String(form.description)}
+            onChange={(e) => update("description", e.target.value)}
+            className="input-base"
+          />
+        </label>
+        <label className="block">
+          <span className="block text-sm font-medium text-surface-300 mb-1">Category (optional)</span>
+          <select
+            value={String(form.category)}
+            onChange={(e) => update("category", e.target.value)}
+            className="input-base"
+          >
+            <option value="">None</option>
+            {TRANSACTION_CATEGORIES.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </label>
+      </div>
 
+      <div className="space-y-3">
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={scheduleForLater}
+            onChange={(e) => {
+              setScheduleForLater(e.target.checked);
+              setFieldErrors((prev) => ({ ...prev, scheduledDate: undefined, form: undefined }));
+              setScheduleSuccess(false);
+            }}
+            className="w-4 h-4 rounded border-surface-600 bg-surface-800 text-brand-500 focus:ring-brand-500"
+          />
+          <span className="text-sm text-surface-300">Schedule for later</span>
+        </label>
+        {scheduleForLater && (
+          <label className="block">
+            <span className="block text-sm font-medium text-surface-300 mb-1">Date to send</span>
+            <input
+              type="date"
+              value={scheduledDate}
+              min={getTomorrowIso()}
+              onChange={(e) => {
+                setScheduledDate(e.target.value);
+                setFieldErrors((prev) => ({ ...prev, scheduledDate: undefined }));
+              }}
+              className="input-base max-w-[180px]"
+              aria-invalid={!!fieldErrors.scheduledDate}
+            />
+            {fieldErrors.scheduledDate && (
+              <p className="mt-1 text-sm text-red-400" role="alert">{fieldErrors.scheduledDate}</p>
+            )}
+          </label>
+        )}
+      </div>
+
+      {!scheduleForLater && (
       <div className="pt-6 border-t border-surface-800">
         <p className="text-sm text-surface-400 mb-4">Card details (demo — not sent to server)</p>
         <div className="grid sm:grid-cols-2 gap-4">
@@ -352,17 +522,63 @@ export function PaymentForm({ prefilled }: { prefilled?: { amount?: number; curr
           )}
         </label>
       </div>
+      )}
 
       <div className="pt-2">
           <button
             type="submit"
-            disabled={loading}
+            disabled={isSubmitting}
             className="w-full sm:w-auto min-w-[180px] rounded-xl bg-gradient-to-r from-brand-500 to-brand-600 px-6 py-3 font-semibold text-surface-950 shadow-glow-brand hover:from-brand-400 hover:to-brand-500 focus-ring disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
-            {loading ? "Processing…" : "Send payment"}
+            {isSubmitting ? (scheduleForLater ? "Scheduling…" : "Processing…") : scheduleForLater ? "Schedule payment" : "Send payment"}
           </button>
         </div>
       </form>
+
+      {pendingConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="confirm-payment-title"
+        >
+          <div className="bg-surface-900 border border-surface-800 rounded-2xl shadow-xl max-w-sm w-full p-6 animate-slide-up">
+            <h2 id="confirm-payment-title" className="text-lg font-semibold text-white mb-2">
+              Confirm payment
+            </h2>
+            <p className="text-surface-300 text-sm mb-4">
+              Send{" "}
+              <strong className="text-white">
+                {new Intl.NumberFormat("en-US", {
+                  style: "currency",
+                  currency: pendingConfirm.currency,
+                }).format(pendingConfirm.amount)}
+              </strong>{" "}
+              to <strong className="text-white">{pendingConfirm.recipient}</strong>?
+              {pendingConfirm.description && (
+                <span className="block mt-1 text-surface-400">"{pendingConfirm.description}"</span>
+              )}
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setPendingConfirm(null)}
+                className="flex-1 rounded-xl border border-surface-700 bg-surface-800 py-2.5 text-sm font-medium text-white hover:bg-surface-700 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmPayment}
+                disabled={loading}
+                className="flex-1 rounded-xl bg-brand-500 py-2.5 text-sm font-semibold text-surface-950 hover:bg-brand-400 disabled:opacity-50 transition-colors"
+              >
+                {loading ? "Sending…" : "Confirm"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

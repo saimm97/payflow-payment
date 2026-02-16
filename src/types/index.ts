@@ -5,6 +5,20 @@
 
 export type TransactionStatus = "pending" | "completed" | "failed" | "refunded";
 
+/** Common categories for filtering and insights */
+export const TRANSACTION_CATEGORIES = [
+  "Shopping",
+  "Bills & utilities",
+  "Rent",
+  "Transfer",
+  "Food & dining",
+  "Travel",
+  "Subscription",
+  "Other",
+] as const;
+
+export type TransactionCategory = (typeof TRANSACTION_CATEGORIES)[number];
+
 export interface Transaction {
   id: string;
   amount: number;
@@ -13,6 +27,8 @@ export interface Transaction {
   description: string;
   status: TransactionStatus;
   createdAt: string;
+  /** Optional category for filtering and reports */
+  category?: TransactionCategory | string;
   /** Set when payment was processed via Stripe */
   stripePaymentIntentId?: string;
   /** Set when transaction was refunded */
@@ -107,5 +123,20 @@ export interface SignInRecord {
   userId: string;
   ip?: string;
   device?: string;
+  createdAt: string;
+}
+
+export type ScheduledPaymentStatus = "scheduled" | "processed" | "cancelled";
+
+export interface ScheduledPayment {
+  id: string;
+  userId: string;
+  amount: number;
+  currency: string;
+  recipient: string;
+  description?: string;
+  category?: string;
+  scheduledFor: string; // ISO date (date only)
+  status: ScheduledPaymentStatus;
   createdAt: string;
 }

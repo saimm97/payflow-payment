@@ -19,6 +19,7 @@ export function usePayment() {
       currency: string;
       recipient: string;
       description?: string;
+      category?: string;
     }) => {
       setLoading(true);
       setError(null);

@@ -70,6 +70,7 @@ export function TransactionDetailModal({ transaction: initialTransaction, onClos
       <dl>
         <dt>Recipient</dt><dd>${transaction.recipient}</dd>
         <dt>Description</dt><dd>${transaction.description || "—"}</dd>
+        ${transaction.category ? `<dt>Category</dt><dd>${transaction.category}</dd>` : ""}
         <dt>Transaction ID</dt><dd>${transaction.id}</dd>
         <dt>Date</dt><dd>${formatDate(transaction.createdAt)}</dd>
         <dt>Status</dt><dd>${transaction.status}</dd>
@@ -164,6 +165,12 @@ export function TransactionDetailModal({ transaction: initialTransaction, onClos
               <dt className="text-xs font-medium text-surface-500 uppercase tracking-wider">Description</dt>
               <dd className="mt-1 text-surface-300">{transaction.description || "—"}</dd>
             </div>
+            {transaction.category && (
+              <div>
+                <dt className="text-xs font-medium text-surface-500 uppercase tracking-wider">Category</dt>
+                <dd className="mt-1 text-surface-300">{transaction.category}</dd>
+              </div>
+            )}
             <div>
               <dt className="text-xs font-medium text-surface-500 uppercase tracking-wider">Transaction ID</dt>
               <dd className="mt-1 font-mono text-sm text-surface-400">{transaction.id}</dd>

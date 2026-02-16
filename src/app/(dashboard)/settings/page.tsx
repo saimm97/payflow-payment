@@ -16,6 +16,7 @@ export default function SettingsPage() {
   const [defaultCurrency, setDefaultCurrency] = useState("USD");
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [theme, setThemeState] = useState<"dark" | "light" | "system">("system");
+  const [monthlySpendingLimit, setMonthlySpendingLimit] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<"saved" | "error" | null>(null);
@@ -27,6 +28,9 @@ export default function SettingsPage() {
         if (data.defaultCurrency) setDefaultCurrency(data.defaultCurrency);
         if (typeof data.notificationsEnabled === "boolean") setNotificationsEnabled(data.notificationsEnabled);
         if (["dark", "light", "system"].includes(data.theme)) setThemeState(data.theme);
+        if (typeof data.monthlySpendingLimit === "number" && data.monthlySpendingLimit > 0) {
+          setMonthlySpendingLimit(String(data.monthlySpendingLimit));
+        }
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -36,6 +40,7 @@ export default function SettingsPage() {
     setSaving(true);
     setMessage(null);
     try {
+      const limitNum = monthlySpendingLimit.trim() ? parseFloat(monthlySpendingLimit) : undefined;
       const res = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -43,6 +48,7 @@ export default function SettingsPage() {
           defaultCurrency,
           notificationsEnabled,
           theme,
+          monthlySpendingLimit: limitNum != null && Number.isFinite(limitNum) && limitNum >= 0 ? limitNum : undefined,
         }),
       });
       if (res.ok) {
@@ -115,6 +121,19 @@ export default function SettingsPage() {
                   className="w-4 h-4 rounded border-surface-600 bg-surface-800 text-brand-500 focus:ring-brand-500"
                 />
                 <span className="text-sm text-surface-300">Enable payment and activity notifications</span>
+              </label>
+              <label className="block">
+                <span className="block text-sm font-medium text-surface-300 mb-2">Monthly spending limit (optional)</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="100"
+                  placeholder="e.g. 5000 — leave empty for no limit"
+                  value={monthlySpendingLimit}
+                  onChange={(e) => setMonthlySpendingLimit(e.target.value)}
+                  className="input-base max-w-[200px]"
+                />
+                <p className="mt-1 text-xs text-surface-500">Dashboard will show how much you’ve spent vs this limit.</p>
               </label>
               <button
                 type="button"

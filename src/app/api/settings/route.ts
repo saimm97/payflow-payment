@@ -26,8 +26,8 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
     const body = await request.json();
-    const { defaultCurrency, notificationsEnabled, theme } = body;
-    const patch: { defaultCurrency?: string; notificationsEnabled?: boolean; theme?: Theme } = {};
+    const { defaultCurrency, notificationsEnabled, theme, monthlySpendingLimit } = body;
+    const patch: { defaultCurrency?: string; notificationsEnabled?: boolean; theme?: Theme; monthlySpendingLimit?: number } = {};
     if (typeof defaultCurrency === "string" && defaultCurrency.length === 3) {
       patch.defaultCurrency = defaultCurrency;
     }
@@ -36,6 +36,10 @@ export async function PATCH(request: NextRequest) {
     }
     if (THEMES.includes(theme)) {
       patch.theme = theme;
+    }
+    if (monthlySpendingLimit !== undefined) {
+      const num = Number(monthlySpendingLimit);
+      patch.monthlySpendingLimit = Number.isFinite(num) && num >= 0 ? num : undefined;
     }
     const next = updateSettings(session.user.id, patch);
     return NextResponse.json(next);
