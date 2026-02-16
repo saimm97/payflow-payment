@@ -8,6 +8,7 @@ const transactions: Transaction[] = [
     recipient: "Acme Corp",
     description: "Office supplies",
     status: "completed",
+    category: "Shopping",
     createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
   },
   {
@@ -17,6 +18,7 @@ const transactions: Transaction[] = [
     recipient: "Tech Solutions Ltd",
     description: "Software license",
     status: "completed",
+    category: "Subscription",
     createdAt: new Date(Date.now() - 86400000).toISOString(),
   },
   {
@@ -26,6 +28,7 @@ const transactions: Transaction[] = [
     recipient: "Jane Doe",
     description: "Reimbursement",
     status: "pending",
+    category: "Transfer",
     createdAt: new Date().toISOString(),
   },
 ];
@@ -55,6 +58,7 @@ export interface ProcessPaymentParams {
   currency: string;
   recipient: string;
   description?: string;
+  category?: string;
 }
 
 /** Demo mode: simulate payment without Stripe */
@@ -69,6 +73,7 @@ export function processPayment(
     recipient: params.recipient,
     description: params.description ?? "",
     status,
+    category: params.category,
     createdAt: new Date().toISOString(),
   };
   transactions.unshift(transaction);
@@ -87,6 +92,7 @@ export function createPendingTransaction(
     recipient: params.recipient,
     description: params.description ?? "",
     status: "pending",
+    category: params.category,
     createdAt: new Date().toISOString(),
     stripePaymentIntentId,
   };

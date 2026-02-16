@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message, errors: parsed.error.flatten() }, { status: 400 });
     }
 
-    const { amount, currency, recipient, description } = parsed.data;
+    const { amount, currency, recipient, description, category } = parsed.data;
     const amountInCents = amountToCents(amount, currency);
     if (amountInCents < 50) {
       return NextResponse.json({ message: "Minimum amount is 0.50" }, { status: 400 });
@@ -45,6 +45,7 @@ export async function POST(request: NextRequest) {
       currency,
       recipient,
       description,
+      category,
     });
 
     return NextResponse.json({

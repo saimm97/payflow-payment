@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
 import { useTransactions } from "@/hooks/use-transactions";
 import { Card, CardHeader } from "./Card";
@@ -49,6 +49,20 @@ function filterByPeriod(transactions: Transaction[], days: number | null): Trans
 export function DashboardOverview() {
   const { transactions, loading, error } = useTransactions();
   const [period, setPeriod] = useState<typeof PERIODS[number]["value"]>("30d");
+  const [monthlyLimit, setMonthlyLimit] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((res) => (res.ok ? res.json() : {}))
+      .then((data) => {
+        if (typeof data.monthlySpendingLimit === "number" && data.monthlySpendingLimit > 0) {
+          setMonthlyLimit(data.monthlySpendingLimit);
+        } else {
+          setMonthlyLimit(null);
+        }
+      })
+      .catch(() => setMonthlyLimit(null));
+  }, []);
 
   const periodConfig = PERIODS.find((p) => p.value === period) ?? PERIODS[2];
   const filtered = useMemo(
@@ -58,6 +72,19 @@ export function DashboardOverview() {
   const completed = filtered.filter((t) => t.status === "completed");
   const total = completed.reduce((sum, t) => sum + t.amount, 0);
   const recent = filtered.slice(0, 5);
+
+  const currentMonthSpent = useMemo(() => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999).getTime();
+    return transactions
+      .filter((t) => t.status === "completed")
+      .filter((t) => {
+        const tms = new Date(t.createdAt).getTime();
+        return tms >= start && tms <= end;
+      })
+      .reduce((sum, t) => sum + t.amount, 0);
+  }, [transactions]);
 
   const uniqueRecipients = useMemo(() => {
     const seen = new Set<string>();
@@ -89,6 +116,15 @@ export function DashboardOverview() {
     return Object.entries(byMonth).sort(([a], [b]) => a.localeCompare(b));
   }, [transactions]);
   const maxSpending = Math.max(1, ...spendingByMonth.map(([, v]) => v));
+
+  const spendingByCategory = useMemo(() => {
+    const byCategory: Record<string, number> = {};
+    completed.forEach((t) => {
+      const key = t.category || "Uncategorized";
+      byCategory[key] = (byCategory[key] ?? 0) + t.amount;
+    });
+    return Object.entries(byCategory).sort(([, a], [, b]) => b - a);
+  }, [completed]);
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -124,6 +160,36 @@ export function DashboardOverview() {
               </Link>
             ))}
           </div>
+        </section>
+      )}
+      {monthlyLimit != null && monthlyLimit > 0 && (
+        <section className="rounded-xl border border-surface-800 bg-surface-800/40 p-4">
+          <h2 className="text-sm font-medium text-surface-400 mb-2">Monthly budget</h2>
+          <div className="flex items-center justify-between gap-4 mb-2">
+            <span className="text-sm text-surface-300">
+              {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0 }).format(currentMonthSpent)}
+              {" / "}
+              {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0 }).format(monthlyLimit)}
+            </span>
+            <span className={`text-sm font-medium ${currentMonthSpent >= monthlyLimit ? "text-red-400" : "text-surface-400"}`}>
+              {Math.round((currentMonthSpent / monthlyLimit) * 100)}%
+            </span>
+          </div>
+          <div className="h-2 rounded-full bg-surface-700 overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${currentMonthSpent >= monthlyLimit ? "bg-red-500" : "bg-brand-500"}`}
+              style={{ width: `${Math.min(100, (currentMonthSpent / monthlyLimit) * 100)}%` }}
+              role="progressbar"
+              aria-valuenow={currentMonthSpent}
+              aria-valuemin={0}
+              aria-valuemax={monthlyLimit}
+            />
+          </div>
+          <p className="text-xs text-surface-500 mt-1">
+            {currentMonthSpent >= monthlyLimit
+              ? "You’ve reached your monthly limit. Adjust in Settings if needed."
+              : "Spending this month. Set or change limit in Settings."}
+          </p>
         </section>
       )}
       <section>
@@ -210,6 +276,34 @@ export function DashboardOverview() {
             })}
           </div>
         </Card>
+
+      {spendingByCategory.length > 0 && (
+        <Card className="p-6">
+          <h2 className="text-lg font-semibold text-white mb-1">Spending by category</h2>
+          <p className="text-sm text-surface-400 mb-4">{periodConfig.label}</p>
+          <ul className="space-y-3" role="list">
+            {spendingByCategory.map(([category, sum]) => {
+              const pct = total > 0 ? (sum / total) * 100 : 0;
+              return (
+                <li key={category} className="flex items-center gap-4">
+                  <span className="text-sm font-medium text-surface-300 min-w-[120px] truncate">
+                    {category}
+                  </span>
+                  <div className="flex-1 h-2 rounded-full bg-surface-700 overflow-hidden max-w-[200px]">
+                    <div
+                      className="h-full rounded-full bg-brand-500"
+                      style={{ width: `${Math.min(100, pct)}%` }}
+                    />
+                  </div>
+                  <span className="text-sm font-semibold text-white tabular-nums min-w-[80px] text-right">
+                    {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 }).format(sum)}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+      )}
 
       <div className="grid lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2 overflow-hidden">

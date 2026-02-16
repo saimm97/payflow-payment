@@ -24,6 +24,7 @@ export const paymentFormSchema = z.object({
     .min(2, "Recipient name is required")
     .max(100, "Recipient name is too long"),
   description: z.string().max(200, "Description is too long").optional().default(""),
+  category: z.string().max(50).optional().default(""),
   cardNumber: z
     .string()
     .transform(normalizeCardNumber)
@@ -48,6 +49,7 @@ export const createPaymentSchema = paymentFormSchema
     currency: z.string().length(3),
     recipient: z.string().min(2),
     description: z.string().optional(),
+    category: z.string().max(50).optional(),
   });
 
 export type PaymentFormValues = z.infer<typeof paymentFormSchema>;
